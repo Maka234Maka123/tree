@@ -28,8 +28,8 @@ graph TB
 ```bash
 # 创建目录并复制文件
 mkdir -p ~/.local/bin && \
-cp wt wt.sh ~/.local/bin/ && \
-chmod +x ~/.local/bin/wt && \
+cp -r wt wt.sh lib ~/.local/bin/ && \
+chmod +x ~/.local/bin/wt ~/.local/bin/lib/*.sh && \
 echo 'export WT_SCRIPT="$HOME/.local/bin/wt"' >> ~/.zshrc && \
 echo 'source "$HOME/.local/bin/wt.sh"' >> ~/.zshrc && \
 source ~/.zshrc
@@ -48,12 +48,13 @@ mkdir -p ~/.local/bin
 ```bash
 cp wt ~/.local/bin/
 cp wt.sh ~/.local/bin/
+cp -r lib ~/.local/bin/
 ```
 
 #### 3. 添加执行权限
 
 ```bash
-chmod +x ~/.local/bin/wt
+chmod +x ~/.local/bin/wt ~/.local/bin/lib/*.sh
 ```
 
 #### 4. 配置 Shell
@@ -78,10 +79,28 @@ source ~/.zshrc  # 或 source ~/.bashrc
 wt help
 ```
 
+### 安装后目录结构
+
+```
+~/.local/bin/
+├── wt                      # 主脚本
+├── wt.sh                   # Shell 函数包装器
+└── lib/                    # 库文件目录
+    ├── colors.sh           # 颜色定义
+    ├── helpers.sh          # 辅助函数
+    ├── cmd_basic.sh        # 基础命令
+    ├── cmd_parallel.sh     # 并行命令
+    ├── cmd_sync.sh         # 同步命令
+    ├── help.sh             # 帮助文档
+    ├── shell_helpers.sh    # Shell 辅助函数
+    ├── shell_commands.sh   # Shell 命令实现
+    └── completions.sh      # 补全脚本
+```
+
 ### 卸载
 
 ```bash
-rm ~/.local/bin/wt ~/.local/bin/wt.sh
+rm -rf ~/.local/bin/wt ~/.local/bin/wt.sh ~/.local/bin/lib
 # 然后从 ~/.zshrc 中删除相关配置
 ```
 
@@ -102,10 +121,6 @@ mindmap
       done - 标记完成
       check - 检查冲突
       merge-all - 全部合并
-    紧急修复
-      hotfix - 创建修复
-      hotfix-done - 完成修复
-      hotfix-status - 查看状态
     同步更新
       sync - 同步当前
       sync all - 同步全部
@@ -180,7 +195,8 @@ cd /path/to/.worktrees/myrepo/feature-ui && claude
 # 终端 3:
 cd /path/to/.worktrees/myrepo/feature-api && claude
 
-# 3. 各个 Claude Code 完成后，在对应目录标记完成
+# 3. 各个 Claude Code 完成后，确保已提交代码，然后标记完成
+git add . && git commit -m "完成功能"
 wt done
 
 # 4. 查看任务状态
@@ -193,45 +209,71 @@ wt check
 wt merge-all
 ```
 
-### 场景三：紧急 Bug 修复
+#### 安全检查机制
+
+**wt done 检查流程：**
 
 ```mermaid
-flowchart LR
-    subgraph 正在开发
-        A[feature 分支<br/>Claude Code 1<br/>继续工作...]
-    end
-
-    subgraph 紧急修复
-        B[收到 Bug] -->|wt hotfix bug-123| C[hotfix 分支]
-        C -->|新终端| D[Claude Code 2<br/>修复 bug]
-        D -->|wt hotfix-done -p| E[合并到 main]
-        E -->|自动提示| F[同步到 feature?]
-    end
-
-    F -->|wt sync| A
+flowchart TB
+    A[wt done] --> B{有未提交的更改?}
+    B -->|有| C[❌ 错误: 请先提交更改]
+    B -->|无| D{有新的提交?}
+    D -->|有| E[✓ 标记为完成]
+    D -->|无| F[⚠️ 警告: 没有新提交]
+    F --> G{确认继续?}
+    G -->|是| E
+    G -->|否| H[取消操作]
 ```
 
-**操作步骤：**
+**merge-all 清理流程：**
+
+```mermaid
+flowchart TB
+    A[wt merge-all] --> B[合并所有 done 状态的分支]
+    B --> C{还有 working 状态的分支?}
+    C -->|有| D[保留 jobs 文件]
+    C -->|无| E[可删除 jobs 文件]
+    D --> F[提示: 其他空间可继续工作]
+    E --> G[清理完成]
+```
+
+#### 部分分支先完成的情况
+
+支持分批合并，先完成的分支可以先合并，其他分支继续工作：
 
 ```bash
-# 1. 正在用 Claude Code 开发 feature...
-# 突然收到紧急 bug 报告
+# 空间 A 先完成
+wt done
 
-# 2. 创建 hotfix（不影响当前开发）
-wt hotfix bug-123
+# 先合并 A（其他空间仍在工作）
+wt merge-all
+# 提示：还有分支正在工作中，jobs 文件将保留
 
-# 3. 打开新终端，启动另一个 Claude Code
-cd /path/to/.worktrees/myrepo/hotfix/bug-123 && claude
+# 空间 B 后来完成
+wt done
 
-# 4. 修复完成后
-wt hotfix-done -p    # 合并并推送
-
-# 5. 自动提示是否同步到正在开发的分支
-# 或手动同步
-wt sync
+# 继续合并 B
+wt merge-all
 ```
 
-### 场景四：同步主分支更新
+#### 常见问题
+
+**问题：执行 wt done 提示"有未提交的更改"**
+
+需要先提交代码才能标记完成：
+
+```bash
+git add .
+git commit -m "your changes"
+wt done
+```
+
+**问题：执行 wt done 提示"没有新的提交"**
+
+分支相对于基础分支没有任何新提交，合并时不会有效果。确认是否已完成开发并提交。
+
+
+### 场景三：同步主分支更新
 
 ```mermaid
 flowchart TB
@@ -275,20 +317,11 @@ wt sync all
 |------|------|------|
 | `wt spawn <base> <b1> <b2>...` | `wt sp` | 批量创建并行 worktree |
 | `wt jobs` | `wt j` | 查看并行任务状态 |
-| `wt done [branch]` | `wt d` | 标记分支完成 |
+| `wt done [branch]` | `wt d` | 标记分支完成（会检查是否有新提交） |
 | `wt check` | `wt ck` | 预检查冲突 |
 | `wt merge-all` | `wt ma` | 顺序合并所有已完成分支 |
 | `wt abort` | - | 中止合并 |
 | `wt jobs-clean` | `wt jc` | 清理所有并行任务 |
-
-### 紧急修复命令
-
-| 命令 | 简写 | 说明 |
-|------|------|------|
-| `wt hotfix <name> [base]` | `wt hf` | 创建 hotfix 分支 |
-| `wt hotfix-done [-p]` | `wt hfd` | 完成并合并，`-p` 自动推送 |
-| `wt hotfix-status` | `wt hfs` | 查看 hotfix 状态 |
-| `wt hotfix-clean` | `wt hfc` | 清理 hotfix |
 
 ### 同步命令
 
@@ -303,15 +336,12 @@ wt sync all
 your-project/                    # 主仓库
 ├── .git/
 │   ├── wt-stack                 # 工作栈记录
-│   ├── wt-jobs                  # 并行任务记录
-│   └── wt-hotfix                # hotfix 记录
+│   └── wt-jobs                  # 并行任务记录
 └── src/
 
 ../.worktrees/your-project/      # worktree 目录（与主仓库同级）
 ├── feature-auth/
-├── feature-ui/
-└── hotfix/
-    └── bug-123/
+└── feature-ui/
 ```
 
 ## 冲突处理
