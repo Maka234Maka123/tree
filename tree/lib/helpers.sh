@@ -35,13 +35,13 @@ get_merge_queue_file() {
     echo "$main_git_dir/wt-merge-queue"
 }
 
-# 获取 worktree 基础目录（与主仓库同级）
+# 获取 worktree 基础目录（桌面上的 worktrees 文件夹）
 get_worktree_base() {
     local main_git_dir=$(get_main_git_dir)
     # 主仓库目录
     local main_repo=$(dirname "$main_git_dir")
-    # worktree 放在主仓库的同级目录
-    echo "$(dirname "$main_repo")/.worktrees/$(basename "$main_repo")"
+    # worktree 放在桌面的 worktrees 文件夹下
+    echo "$HOME/Desktop/worktrees/$(basename "$main_repo")"
 }
 
 # 推入栈
